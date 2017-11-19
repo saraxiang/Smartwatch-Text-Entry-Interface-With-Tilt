@@ -16,8 +16,11 @@ import android.hardware.SensorEventListener;
 
 Context context;
 SensorManager manager;
-Sensor sensor;
-AccelerometerListener listener;
+Sensor accelerometer;
+Sensor magnetometer;
+private float[] mGravity;
+private float[] mGeomagnetic;
+Listener Listener;
 
 String[] phrases; //contains all of the phrases
 int totalTrialNum = 4; //the total number of phrases to be tested - set this low for testing. Might be ~10 for the real bakeoff!
@@ -55,16 +58,65 @@ private class Button
   boolean selected = false;
 }
 
-class AccelerometerListener implements SensorEventListener {
+class Listener implements SensorEventListener {
   public void onSensorChanged(SensorEvent event) {
-    float x = event.values[0];
-    float y = event.values[1];
-    float z = event.values[2];  
-    
-    System.out.println("x: " + x +  " y: " + y + " z: " + z);
+
+    int sensorType = event.sensor.getType();
+    switch (sensorType) {
+        case Sensor.TYPE_ACCELEROMETER:
+            mGravity = event.values;
+            float x = event.values[0];
+            float y = event.values[1];
+            float z = event.values[2];  
+            System.out.println("x: " + x +  " y: " + y + " z: " + z);
+
+            break;
+        case Sensor.TYPE_MAGNETIC_FIELD:
+            mGeomagnetic = event.values;
+            break;
+    }
+
+    float R[] = new float[9];
+    if (! SensorManager.getRotationMatrix(R, null, mGravity, mGeomagnetic)) {
+        System.out.println("getRotationMatrix() failed");
+        return;
+    }
+
+    float orientation[] = new float[9];
+        SensorManager.getOrientation(R, orientation);
+        // Orientation contains: azimuth, pitch and roll - we use roll
+        float roll = orientation[2];
+        int rollDeg = (int) Math.round(Math.toDegrees(roll));
+        checkAction(rollDeg);
   }
+
+  // TODO: prob don't need this
   public void onAccuracyChanged(Sensor sensor, int accuracy) {
   }
+}
+
+void checkAction(int degrees) {
+      // Tilted back towards user more than -90 deg
+    if (degrees < -90) {
+        degrees = -90;
+    }
+    // Tilted forward past 0 deg
+    else if (degrees > 90) {
+        degrees = 90;
+    }
+
+    System.out.println("degrees:" + degrees);
+
+    // TODO: test for tilt
+    // if (b.character == "delete") {
+    //   if (currentTyped.length() > 0)
+    //     currentTyped = currentTyped.substring(0, currentTyped.length() - 1);
+    // }
+    // else if (b.character == " ") {
+    //   currentTyped += b.character;
+    // }
+
+    return;
 }
 
 ArrayList<Button> buttons = new ArrayList<Button>();
@@ -75,9 +127,16 @@ void setup()
   
   context = getActivity();
   manager = (SensorManager)context.getSystemService(Context.SENSOR_SERVICE);
-  sensor = manager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-  listener = new AccelerometerListener();
-  manager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME);
+
+  // set up accelerometer
+  accelerometer = manager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+  Listener = new Listener();
+  manager.registerListener(Listener, accelerometer, SensorManager.SENSOR_DELAY_GAME);
+
+  // set up magnetometer
+  magnetometer = manager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+  Listener = new Listener();
+  manager.registerListener(Listener, magnetometer, SensorManager.SENSOR_DELAY_GAME);
   
   phrases = loadStrings("phrases2.txt"); //load the phrase set into memory
   Collections.shuffle(Arrays.asList(phrases)); //randomize the order of the phrases
@@ -270,15 +329,6 @@ if (clicked == false) { return; }
     }
   }
 }
-
-// TODO: test for tilt
-// if (b.character == "delete") {
-//   if (currentTyped.length() > 0)
-//     currentTyped = currentTyped.substring(0, currentTyped.length() - 1);
-// }
-// else if (b.character == " ") {
-//   currentTyped += b.character;
-// }
 
 void mouseReleased() 
 {
