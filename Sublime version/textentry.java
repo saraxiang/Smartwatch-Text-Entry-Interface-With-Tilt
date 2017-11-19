@@ -1,11 +1,23 @@
 import java.util.Arrays;
 import java.util.Collections;
 
+import android.content.Context;
+import android.hardware.Sensor;
+import android.hardware.SensorManager;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+
 // TODO: if drag off screen, don't type letter
 // TODO: mark where user first clicked (help gauge distance needed?)
 // TODO: tap "currentLetter" box to repeat a letter?
 // TODO: can create "rings" of distances to visually represent where finger needs to go for each letter after click
 // TODO: use phone rotation for delete/space
+// TODO: visual feedback that "space" was clicked (since no button)
+
+Context context;
+SensorManager manager;
+Sensor sensor;
+AccelerometerListener listener;
 
 String[] phrases; //contains all of the phrases
 int totalTrialNum = 4; //the total number of phrases to be tested - set this low for testing. Might be ~10 for the real bakeoff!
@@ -43,11 +55,30 @@ private class Button
   boolean selected = false;
 }
 
+class AccelerometerListener implements SensorEventListener {
+  public void onSensorChanged(SensorEvent event) {
+    float x = event.values[0];
+    float y = event.values[1];
+    float z = event.values[2];  
+    
+    System.out.println("x: " + x +  " y: " + y + " z: " + z);
+  }
+  public void onAccuracyChanged(Sensor sensor, int accuracy) {
+  }
+}
+
 ArrayList<Button> buttons = new ArrayList<Button>();
 
 //You can modify anything in here. This is just a basic implementation.
 void setup()
 {
+  
+  context = getActivity();
+  manager = (SensorManager)context.getSystemService(Context.SENSOR_SERVICE);
+  sensor = manager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+  listener = new AccelerometerListener();
+  manager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME);
+  
   phrases = loadStrings("phrases2.txt"); //load the phrase set into memory
   Collections.shuffle(Arrays.asList(phrases)); //randomize the order of the phrases
     
@@ -98,19 +129,6 @@ void setup()
     b.x = buttonWidth;
     b.y = buttonHeight * 3;
     b.character = "b n m";
-    buttons.add(b);
-
-  // delete button
-  b = new Button();
-    b.width = int(sizeOfInputArea/3);
-    b.character = "delete";
-    buttons.add(b);
-
-  // space button
-  b = new Button();
-    b.x = int(sizeOfInputArea/3) * 2;
-    b.width = int(sizeOfInputArea/3);
-    b.character = " ";
     buttons.add(b);
 }
 
@@ -217,36 +235,34 @@ if (clicked == false) { return; }
     Button b = buttons.get(i);
     if (b.selected) {
       // System.out.println("selected: " + b.character);
-      if (b.character != "delete" && b.character != " ") {
-        int releaseX = mouseX;
-        int releaseY = mouseY;
-        
-        PVector v = new PVector(releaseX-clickX, releaseY-clickY);
-        float dragDistance = v.mag();
-        // System.out.println("mag is: " + dragDistance);
-        if (dragDistance < 50) {
-          currentLetter = b.character.charAt(0);
-        } else if (dragDistance < 100) {
-          currentLetter = b.character.charAt(1 * numSpaces);
-        } else if (dragDistance < 150) {
+      int releaseX = mouseX;
+      int releaseY = mouseY;
+      
+      PVector v = new PVector(releaseX-clickX, releaseY-clickY);
+      float dragDistance = v.mag();
+      // System.out.println("mag is: " + dragDistance);
+      if (dragDistance < 50) {
+        currentLetter = b.character.charAt(0);
+      } else if (dragDistance < 100) {
+        currentLetter = b.character.charAt(1 * numSpaces);
+      } else if (dragDistance < 150) {
+        currentLetter = b.character.charAt(2 * numSpaces);
+      } else if (dragDistance < 200) {
+        // if there is no fourth char, do third
+        if (b.character.length() - 1 >= (3 * numSpaces)) {
+          currentLetter = b.character.charAt(3 * numSpaces);;
+        } else {
           currentLetter = b.character.charAt(2 * numSpaces);
-        } else if (dragDistance < 200) {
-          // if there is no fourth char, do third
+        }
+      } else {
+        // if there is no fifth char, do fourth, if there is no fourth char, do third
+        if (b.character.length() - 1 >= (4 * numSpaces)) {
+          currentLetter = b.character.charAt(4 * numSpaces);
+        } else {
           if (b.character.length() - 1 >= (3 * numSpaces)) {
-            currentLetter = b.character.charAt(3 * numSpaces);;
+            currentLetter = b.character.charAt(3 * numSpaces);
           } else {
             currentLetter = b.character.charAt(2 * numSpaces);
-          }
-        } else {
-          // if there is no fifth char, do fourth, if there is no fourth char, do third
-          if (b.character.length() - 1 >= (4 * numSpaces)) {
-            currentLetter = b.character.charAt(4 * numSpaces);
-          } else {
-            if (b.character.length() - 1 >= (3 * numSpaces)) {
-              currentLetter = b.character.charAt(3 * numSpaces);
-            } else {
-              currentLetter = b.character.charAt(2 * numSpaces);
-            }
           }
         }
       }
@@ -254,6 +270,15 @@ if (clicked == false) { return; }
     }
   }
 }
+
+// TODO: test for tilt
+// if (b.character == "delete") {
+//   if (currentTyped.length() > 0)
+//     currentTyped = currentTyped.substring(0, currentTyped.length() - 1);
+// }
+// else if (b.character == " ") {
+//   currentTyped += b.character;
+// }
 
 void mouseReleased() 
 {
@@ -265,43 +290,34 @@ currentLetter = '\u0009';
     Button b = buttons.get(i);
     if (b.selected) {
       b.selected = false;
-      if (b.character == "delete") {
-        if (currentTyped.length() > 0)
-          currentTyped = currentTyped.substring(0, currentTyped.length() - 1);
-      }
-      else if (b.character == " ") {
-        currentTyped += b.character;
-      }
-      else {
-        int releaseX = mouseX;
-        int releaseY = mouseY;
-        
-        PVector v = new PVector(releaseX-clickX, releaseY-clickY);
-        float dragDistance = v.mag();
+      int releaseX = mouseX;
+      int releaseY = mouseY;
+      
+      PVector v = new PVector(releaseX-clickX, releaseY-clickY);
+      float dragDistance = v.mag();
 
-        if (dragDistance < 50) {
-          currentTyped += b.character.charAt(0);
-        } else if (dragDistance < 100) {
-          currentTyped += b.character.charAt(1 * numSpaces);
-        } else if (dragDistance < 150) {
+      if (dragDistance < 50) {
+        currentTyped += b.character.charAt(0);
+      } else if (dragDistance < 100) {
+        currentTyped += b.character.charAt(1 * numSpaces);
+      } else if (dragDistance < 150) {
+        currentTyped += b.character.charAt(2 * numSpaces);
+      } else if (dragDistance < 200) {
+        // if there is no fourth char, do third
+        if (b.character.length() - 1 >= (3 * numSpaces)) {
+          currentTyped += b.character.charAt(3 * numSpaces);;
+        } else {
           currentTyped += b.character.charAt(2 * numSpaces);
-        } else if (dragDistance < 200) {
-          // if there is no fourth char, do third
+        }
+      } else {
+        // if there is no fifth char, do fourth, if there is no fourth char, do third
+        if (b.character.length() - 1 >= (4 * numSpaces)) {
+          currentTyped += b.character.charAt(4 * numSpaces);
+        } else {
           if (b.character.length() - 1 >= (3 * numSpaces)) {
-            currentTyped += b.character.charAt(3 * numSpaces);;
+            currentTyped += b.character.charAt(3 * numSpaces);
           } else {
             currentTyped += b.character.charAt(2 * numSpaces);
-          }
-        } else {
-          // if there is no fifth char, do fourth, if there is no fourth char, do third
-          if (b.character.length() - 1 >= (4 * numSpaces)) {
-            currentTyped += b.character.charAt(4 * numSpaces);
-          } else {
-            if (b.character.length() - 1 >= (3 * numSpaces)) {
-              currentTyped += b.character.charAt(3 * numSpaces);
-            } else {
-              currentTyped += b.character.charAt(2 * numSpaces);
-            }
           }
         }
       }
